@@ -1,6 +1,10 @@
 ---
 name: office-delivery-gate
-description: Validate and repair OOXML files (PPTX, DOCX, XLSX) before delivering them, and diagnose Office files that will not open. Use whenever you generate or edit an Office file programmatically, whenever you are about to deliver or attach a .pptx/.docx/.xlsx, and whenever a user reports a file that Microsoft Office calls corrupt, shows a repair prompt, cannot open, or opens with missing content. Covers the duplicate a:latin trap that produced unopenable decks, content-preservation checks, and the four-step validate/repair/re-validate/confirm procedure.
+description: 觸發詞：交付前檢查、交付前確認、檔案驗證、確認檔案能開、PPTX 驗證、交付把關、檔案完整性、檢查簡報、把關 Office 檔案。Validate and repair OOXML files (PPTX, DOCX, XLSX) before delivering them, and diagnose Office files that will not open. Use whenever you generate or edit an Office file programmatically, whenever you are about to deliver or attach a .pptx/.docx/.xlsx, and whenever a user reports a file that Microsoft Office calls corrupt, shows a repair prompt, cannot open, or opens with missing content. Covers the duplicate a:latin trap that produced unopenable decks, content-preservation checks, and the four-step validate/repair/re-validate/confirm procedure.
+metadata:
+  alias_zh-TW: Office 交付前檢查
+  short_alias_zh-TW: 交付檢查
+  keywords_zh-TW: 交付檢查、Office 交付前檢查、交付前檢查、交付前確認、檔案驗證、確認檔案能開、PPTX 驗證、交付把關、檔案完整性、檢查簡報、把關 Office 檔案
 ---
 
 # Office Delivery Gate
