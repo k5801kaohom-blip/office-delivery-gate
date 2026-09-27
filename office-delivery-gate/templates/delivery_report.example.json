@@ -1,0 +1,42 @@
+{
+  "_comment": "Produced by scripts/delivery_gate.py --json <path>. One results entry per checked file. verdict is SAFE or BLOCKED; a BLOCKED file must not be delivered.",
+  "generated_at": "2026-09-27T00:00:00",
+  "verdict": "SAFE",
+  "checked": 1,
+  "blocked": 0,
+  "results": [
+    {
+      "input": "/path/to/deck.pptx",
+      "kind": "pptx",
+      "action": "repaired",
+      "verdict": "SAFE",
+      "initial": {
+        "problem_count": 8,
+        "problems": {
+          "duplicate singleton children": [
+            "ppt/slides/slide1.xml: <rPr> contains 2 copies of <latin> (at most 1 allowed)"
+          ]
+        }
+      },
+      "repaired_path": "delivery_gate/deck.repaired.pptx",
+      "final": {
+        "problem_count": 0,
+        "problems": {}
+      },
+      "content_before": {
+        "readable": true,
+        "parts": 62,
+        "slides": 8,
+        "media": 16,
+        "text_runs": 8
+      },
+      "content_after": {
+        "readable": true,
+        "parts": 62,
+        "slides": 8,
+        "media": 16,
+        "text_runs": 8
+      }
+    }
+  ]
+}

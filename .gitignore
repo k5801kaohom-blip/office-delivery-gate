@@ -1,0 +1,25 @@
+# Skill payload hygiene
+__pycache__/
+*.pyc
+*.pyo
+
+# Build output
+dist/
+
+# Install backups (install.sh moves an existing install here)
+*.backup.*
+
+# Verification artifacts
+verify-report.json
+contract-report.json
+*-report.json
+citizen_test/
+
+# Repair/normalise output from integrity tooling
+*.repaired.*
+*.normalized.*
+*.bak
+
+# OS noise
+.DS_Store
+Thumbs.db

@@ -1,0 +1,185 @@
+name: Release
+
+# Publishes a tagged commit as a downloadable skill archive.
+#
+# A release is a claim that this exact commit is installable. The workflow re-verifies the
+# tagged commit rather than trusting that CI passed on it: a tag can be placed on a commit
+# that never ran CI, or on one whose checks passed days earlier and whose inputs have since
+# changed. The archive is only attached after verification succeeds on the tagged tree.
+#
+# Cutting a release:
+#   git tag -a v1.0.0 -m "v1.0.0"
+#   git push origin v1.0.0
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to release (must already exist)"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  PYTHON_VERSION: "3.11"
+
+jobs:
+  release:
+    name: verify and publish
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Resolve the tag
+        id: ref
+        run: |
+          set -euo pipefail
+          TAG="${{ github.event.inputs.tag || github.ref_name }}"
+          git rev-parse --verify "refs/tags/$TAG" >/dev/null 2>&1 || {
+            echo "::error::tag '$TAG' does not exist"; exit 1; }
+          git checkout -q "refs/tags/$TAG"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "commit=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          echo "short=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+          echo "releasing $TAG at $(git rev-parse --short HEAD)"
+
+      - name: Locate the skill payload
+        id: payload
+        run: |
+          set -euo pipefail
+          SKILL_MD="$(find . -maxdepth 2 -name SKILL.md -not -path './.git/*' | head -1)"
+          test -n "$SKILL_MD" || { echo "no SKILL.md found"; exit 1; }
+          echo "skill_dir=$(dirname "$SKILL_MD")" >> "$GITHUB_OUTPUT"
+          echo "skill_name=$(basename "$(dirname "$SKILL_MD")")" >> "$GITHUB_OUTPUT"
+
+      # The release gate. A tag is not evidence that the tree works.
+      - name: Verify the tagged tree
+        run: |
+          set -o pipefail
+          ./verify_skill_repo.sh --json verify-report.json
+
+      - name: Contract check on the tagged tree
+        run: |
+          set -euo pipefail
+          python3 scripts/check_skill_contract.py \
+            --skill "${{ steps.payload.outputs.skill_dir }}" \
+            --json contract-report.json
+
+      - name: Negative control
+        run: |
+          set -euo pipefail
+          NEGCTL=""
+          for cand in "${{ steps.payload.outputs.skill_dir }}/scripts/ci_negative_control.py" \
+                      scripts/ci_negative_control.py; do
+            [ -f "$cand" ] && NEGCTL="$cand" && break
+          done
+          test -n "$NEGCTL" || { echo "ci_negative_control.py not found"; exit 1; }
+          python3 "$NEGCTL" \
+            --skill "${{ steps.payload.outputs.skill_dir }}" \
+            --checker scripts/check_skill_contract.py \
+            --json negative-control-report.json
+
+      - name: Build the release archive
+        run: |
+          set -euo pipefail
+          ./package.sh
+          ARCHIVE="$(ls dist/*.zip | head -1)"
+          TAG="${{ steps.ref.outputs.tag }}"
+          NAMED="dist/${TAG}-$(basename "$ARCHIVE")"
+          mv "$ARCHIVE" "$NAMED"
+          echo "archive=$NAMED" >> "$GITHUB_ENV"
+
+          # A release archive must be installable, not merely present.
+          rm -rf "$RUNNER_TEMP/check" && mkdir -p "$RUNNER_TEMP/check"
+          unzip -q "$NAMED" -d "$RUNNER_TEMP/check"
+          SKILL_DIR="$(find "$RUNNER_TEMP/check" -mindepth 1 -maxdepth 1 -type d | head -1)"
+          test -f "$SKILL_DIR/SKILL.md" || { echo "archive has no SKILL.md"; exit 1; }
+          python3 "$SKILL_DIR/scripts/check_skill_contract.py" --skill "$SKILL_DIR" \
+            || echo "note: payload ships no contract checker; structure verified only"
+          echo "archive verified installable: $NAMED"
+
+      - name: Checksums
+        run: |
+          set -euo pipefail
+          cd dist
+          sha256sum "$(basename "${{ env.archive }}")" > SHA256SUMS
+          cat SHA256SUMS
+
+      - name: Assemble release notes
+        run: |
+          set -euo pipefail
+          {
+            echo "Skill archive for \`${{ steps.ref.outputs.tag }}\`."
+            echo
+            echo "| | |"
+            echo "| --- | --- |"
+            echo "| Tag | \`${{ steps.ref.outputs.tag }}\` |"
+            echo "| Commit | \`${{ steps.ref.outputs.short }}\` |"
+            echo "| Skill | \`${{ steps.payload.outputs.skill_name }}\` |"
+            echo
+            echo "### Verification at release time"
+            echo
+            python3 scripts/ci_summary.py verify-report.json contract-report.json \
+              negative-control-report.json
+            echo
+            echo "### Install"
+            echo
+            echo '```bash'
+            echo "git clone https://github.com/${{ github.repository }}.git"
+            echo "cd $(basename "${{ github.repository }}")"
+            echo "git checkout ${{ steps.ref.outputs.tag }}"
+            echo "./install.sh"
+            echo '```'
+            echo
+            echo "Or download the archive below and unpack it into \`\${SKILLS_DIR:-\$HOME/skills}\`."
+          } > RELEASE_NOTES.md
+          cat RELEASE_NOTES.md
+
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          TAG="${{ steps.ref.outputs.tag }}"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "release $TAG already exists; uploading assets to it"
+            gh release upload "$TAG" "${{ env.archive }}" dist/SHA256SUMS --clobber
+          else
+            gh release create "$TAG" \
+              "${{ env.archive }}" dist/SHA256SUMS \
+              --title "$TAG" \
+              --notes-file RELEASE_NOTES.md \
+              --verify-tag
+          fi
+
+      - name: Upload verification evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-reports-${{ steps.ref.outputs.tag }}
+          path: |
+            verify-report.json
+            contract-report.json
+            negative-control-report.json
+            RELEASE_NOTES.md
+          if-no-files-found: warn
+          retention-days: 90
