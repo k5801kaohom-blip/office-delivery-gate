@@ -1,0 +1,5 @@
+# Declared so CI can install them before checking that shipped scripts import.
+# A missing dependency surfaces as "the environment is incomplete", not "the script
+# is broken" — the two need different fixes.
+pillow
+python-pptx
